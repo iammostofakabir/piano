@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Maestro Studio — Play & Create Piano Music</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js for high quality Web Audio synthesis -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        studio: {
+                            950: '#090a0f',
+                            900: '#12151f',
+                            800: '#1c2130',
+                            700: '#2a3147',
+                            accent: '#6366f1',
+                            glow: '#818cf8'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        body {
+            background-color: #090a0f;
+            color: #f8fafc;
+            overflow-x: hidden;
+            touch-action: manipulation;
+        }
+
+        /* Custom Piano Key Styling */
+        .piano-container {
+            position: relative;
+            height: 250px;
+            background: linear-gradient(to bottom, #0f172a, #090a0f);
+            padding: 12px 8px 8px 8px;
+            border-radius: 0 0 16px 16px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), inset 0 2px 4px rgba(255, 255, 255, 0.05);
+        }
+
+        @media (max-width: 640px) {
+            .piano-container {
+                height: 200px;
+            }
+        }
+
+        .red-felt {
+            height: 6px;
+            background: linear-gradient(90deg, #7f1d1d, #dc2626, #7f1d1d);
+            width: 100%;
+            position: absolute;
+            top: 8px;
+            left: 0;
+            z-index: 5;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.7);
+        }
+
+        .white-key {
+            position: relative;
+            flex: 1;
+            height: 100%;
+            background: linear-gradient(to bottom, #ffffff 0%, #f1f5f9 92%, #cbd5e1 100%);
+            border: 1px solid #94a3b8;
+            border-radius: 0 0 8px 8px;
+            margin: 0 1.5px;
+            z-index: 10;
+            cursor: pointer;
+            transition: transform 0.04s ease, background 0.04s ease, box-shadow 0.04s ease;
+            box-shadow: 0 6px 0 #64748b, 0 8px 12px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 12px;
+        }
+
+        .white-key:hover {
+            background: linear-gradient(to bottom, #ffffff 0%, #e2e8f0 95%, #cbd5e1 100%);
+        }
+
+        .white-key.active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #475569, 0 4px 6px rgba(0, 0, 0, 0.4), inset 0 0 20px rgba(99, 102, 241, 0.35);
+            background: linear-gradient(to bottom, #e0e7ff 0%, #c7d2fe 100%);
+            border-color: #6366f1;
+        }
+
+        .white-key.target-hint {
+            background: linear-gradient(to bottom, #fef9c3 0%, #fde047 92%, #eab308 100%);
+            box-shadow: 0 6px 0 #a16207, 0 0 25px rgba(250, 204, 21, 0.7);
+        }
+
+        .black-key {
+            position: absolute;
+            top: 10px;
+            width: 4.2%;
+            height: 62%;
+            background: linear-gradient(to bottom, #334155 0%, #0f172a 85%, #020617 100%);
+            border: 1px solid #0f172a;
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            z-index: 20;
+            cursor: pointer;
+            transition: transform 0.04s ease, background 0.04s ease, box-shadow 0.04s ease;
+            box-shadow: 0 5px 0 #020617, 0 6px 12px rgba(0, 0, 0, 0.7), inset 0 -4px 4px rgba(255,255,255,0.1);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 10px;
+            transform: translateX(-50%);
+        }
+
+        .black-key:hover {
+            background: linear-gradient(to bottom, #475569 0%, #1e293b 85%, #020617 100%);
+        }
+
+        .black-key.active {
+            transform: translateX(-50%) translateY(4px);
+            box-shadow: 0 1px 0 #020617, 0 2px 5px rgba(0, 0, 0, 0.6);
+            background: linear-gradient(to bottom, #4f46e5 0%, #3730a3 90%, #1e1b4b 100%);
+            border-color: #818cf8;
+        }
+
+        .black-key.target-hint {
+            background: linear-gradient(to bottom, #eab308 0%, #ca8a04 85%, #854d0e 100%);
+            box-shadow: 0 5px 0 #713f12, 0 0 20px rgba(250, 204, 21, 0.8);
+        }
+
+        /* Pulse animation for recording */
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.12); }
+        }
+        .rec-pulse {
+            animation: pulse-red 1.2s infinite ease-in-out;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #090a0f;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2a3147;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between bg-studio-950 text-slate-100 selection:bg-indigo-500">
+
+    <!-- Top Navigation & Branding -->
+    <header class="border-b border-slate-800/80 bg-studio-900/90 backdrop-blur-md px-4 py-2.5 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+            <!-- Brand -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                    <i class="ph-fill ph-piano-keys text-2xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-lg tracking-tight flex items-center gap-2">
+                        MAESTRO <span class="text-xs font-mono uppercase px-2 py-0.5 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-full">Studio</span>
+                    </h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">Interactive Grand Piano, Visualizer & Loop Station</p>
+                </div>
+            </div>
+
+            <!-- Live Note Display Pill -->
+            <div class="flex items-center gap-4 bg-studio-950 border border-slate-800 px-4 py-1.5 rounded-xl shadow-inner">
+                <div class="text-right">
+                    <span class="text-[10px] uppercase tracking-wider text-slate-500 block font-semibold">Current Note</span>
+                    <span id="current-note-display" class="font-mono text-lg font-bold text-indigo-400">--</span>
+                </div>
+                <div class="h-6 w-[1px] bg-slate-800"></div>
+                <div>
+                    <span class="text-[10px] uppercase tracking-wider text-slate-500 block font-semibold">Chord / Interval</span>
+                    <span id="current-chord-display" class="font-mono text-sm font-semibold text-emerald-400">Ready to Play</span>
+                </div>
+            </div>
+
+            <!-- Quick Help / How to Play Modal Trigger -->
+            <div class="flex items-center gap-2">
+                <button id="toggle-labels-btn" class="px-3 py-2 rounded-lg bg-studio-800 hover:bg-studio-700 text-xs font-semibold text-slate-200 border border-slate-700/80 flex items-center gap-1.5 transition" title="Toggle Key Labels">
+                    <i class="ph ph-keyboard text-base text-indigo-400"></i>
+                    <span class="hidden md:inline">Key Labels: ON</span>
+                </button>
+                <button id="how-to-play-btn" class="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 transition">
+                    <i class="ph-bold ph-graduation-cap text-base"></i>
+                    <span>How to Play</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Studio Workspace -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-2 sm:px-4 py-3 flex flex-col gap-3">
+        
+        <!-- Control Deck: Tone, Tutorial Songs, Drum Machine, Recorder -->
+        <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            
+            <!-- Panel 1: Piano Tone & Effects -->
+            <div class="bg-studio-900 border border-slate-800/90 rounded-2xl p-3.5 flex flex-col justify-between shadow-lg">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i class="ph-fill ph-sliders-horizontal text-indigo-400"></i> Piano Tone & FX
+                    </span>
+                    <span id="tone-badge" class="text-[11px] font-mono text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-800/50">Grand Piano</span>
+                </div>
+
+                <!-- Preset Selector -->
+                <div class="grid grid-cols-2 gap-1.5 mb-3">
+                    <button data-preset="grand" class="tone-preset-btn active-preset px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white border border-indigo-400 shadow flex items-center justify-center gap-1.5 transition">
+                        <i class="ph-fill ph-piano-keys"></i> Concert Grand
+                    </button>
+                    <button data-preset="warm" class="tone-preset-btn px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-studio-800 hover:bg-studio-700 text-slate-300 border border-slate-700 flex items-center justify-center gap-1.5 transition">
+                        <i class="ph-fill ph-coffee"></i> Warm Felt
+                    </button>
+                    <button data-preset="epiano" class="tone-preset-btn px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-studio-800 hover:bg-studio-700 text-slate-300 border border-slate-700 flex items-center justify-center gap-1.5 transition">
+                        <i class="ph-fill ph-lightning"></i> Electric Rhodes
+                    </button>
+                    <button data-preset="synth" class="tone-preset-btn px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-studio-800 hover:bg-studio-700 text-slate-300 border border-slate-700 flex items-center justify-center gap-1.5 transition">
+                        <i class="ph-fill ph-wave-sine"></i> Crystal Pluck
+                    </button>
+                </div>
+
+                <!-- Sliders: Sustain & Reverb -->
+                <div class="space-y-2 text-xs">
+                    <div class="flex items-center justify-between gap-2">
+                        <label class="text-slate-400 font-medium w-20">Sustain</label>
+                        <input id="sustain-slider" type="range" min="0.1" max="3.5" step="0.1" value="1.4" class="w-full accent-indigo-500 cursor-pointer h-1.5 bg-studio-800 rounded-lg">
+                    </div>
+                    <div class="flex items-center justify-between gap-2">
+                        <label class="text-slate-400 font-medium w-20">Hall Reverb</label>
+                        <input id="reverb-slider" type="range" min="0" max="0.9" step="0.05" value="0.35" class="w-full accent-indigo-500 cursor-pointer h-1.5 bg-studio-800 rounded-lg">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 2: Learn & Interactive Songs -->
+            <div class="bg-studio-900 border border-slate-800/90 rounded-2xl p-3.5 flex flex-col justify-between shadow-lg">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i class="ph-fill ph-music-notes text-amber-400"></i> Learn & Play Songs
+                    </span>
+                    <span id="song-status" class="text-[11px] font-mono text-amber-300 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/50">Select Melody</span>
+                </div>
+
+                <select id="song-select" class="w-full bg-studio-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-200 mb-2.5 focus:outline-none focus:border-indigo-500">
+                    <option value="ode">🎵 Ode to Joy (Beethoven) - Easy</option>
+                    <option value="twinkle">⭐ Twinkle Twinkle Little Star - Easy</option>
+                    <option value="fur_elise">🌹 Für Elise (Beethoven) - Medium</option>
+                    <option value="gravity">🌌 Interstellar Theme - Cinematic</option>
+                    <option value="happy">🎂 Happy Birthday To You - Classic</option>
+                </select>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="practice-song-btn" class="px-3 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center justify-center gap-1.5 transition" title="Step-by-step interactive guide">
+                        <i class="ph-fill ph-hand-pointing text-sm"></i> Practice Guide
+                    </button>
+                    <button id="autoplay-song-btn" class="px-3 py-2 rounded-lg bg-studio-800 hover:bg-studio-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 transition" title="Listen to the computer play">
+                        <i class="ph-fill ph-play text-sm text-emerald-400"></i> Auto Demo
+                    </button>
+                </div>
+            </div>
+
+            <!-- Panel 3: Backing Drum & Rhythm Machine -->
+            <div class="bg-studio-900 border border-slate-800/90 rounded-2xl p-3.5 flex flex-col justify-between shadow-lg">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i class="ph-fill ph-metronome text-emerald-400"></i> Backing Beats
+                    </span>
+                    <span id="bpm-display" class="text-[11px] font-mono text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">110 BPM</span>
+                </div>
+
+                <!-- Drum Style Buttons -->
+                <div class="grid grid-cols-4 gap-1.5 mb-2.5">
+                    <button data-beat="none" class="beat-btn bg-emerald-600 text-white border-emerald-400 px-2 py-1.5 rounded-lg text-xs font-semibold border transition">
+                        Off
+                    </button>
+                    <button data-beat="lofi" class="beat-btn bg-studio-800 hover:bg-studio-700 text-slate-300 border-slate-700 px-2 py-1.5 rounded-lg text-xs font-semibold border transition">
+                        Lo-Fi
+                    </button>
+                    <button data-beat="pop" class="beat-btn bg-studio-800 hover:bg-studio-700 text-slate-300 border-slate-700 px-2 py-1.5 rounded-lg text-xs font-semibold border transition">
+                        Pop
+                    </button>
+                    <button data-beat="waltz" class="beat-btn bg-studio-800 hover:bg-studio-700 text-slate-300 border-slate-700 px-2 py-1.5 rounded-lg text-xs font-semibold border transition">
+                        Waltz
+                    </button>
+                </div>
+
+                <!-- Tempo Slider & Chord Pad Trigger -->
+                <div class="space-y-2 text-xs">
+                    <div class="flex items-center justify-between gap-2">
+                        <label class="text-slate-400 font-medium w-20">Tempo</label>
+                        <input id="bpm-slider" type="range" min="70" max="160" step="2" value="110" class="w-full accent-emerald-500 cursor-pointer h-1.5 bg-studio-800 rounded-lg">
+                    </div>
+                    <div class="flex items-center justify-between pt-0.5">
+                        <span class="text-[11px] text-slate-400">One-Click Chords:</span>
+                        <div class="flex gap-1">
+                            <button onclick="playInstantChord(['C3','E3','G3','C4'], 'C Major')" class="px-2 py-0.5 bg-studio-800 hover:bg-indigo-600 rounded text-[11px] font-mono border border-slate-700 transition">C</button>
+                            <button onclick="playInstantChord(['G3','B3','D4','G4'], 'G Major')" class="px-2 py-0.5 bg-studio-800 hover:bg-indigo-600 rounded text-[11px] font-mono border border-slate-700 transition">G</button>
+                            <button onclick="playInstantChord(['A3','C4','E4','A4'], 'A Minor')" class="px-2 py-0.5 bg-studio-800 hover:bg-indigo-600 rounded text-[11px] font-mono border border-slate-700 transition">Am</button>
+                            <button onclick="playInstantChord(['F3','A3','C4','F4'], 'F Major')" class="px-2 py-0.5 bg-studio-800 hover:bg-indigo-600 rounded text-[11px] font-mono border border-slate-700 transition">F</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 4: Studio Recorder & Song Builder -->
+            <div class="bg-studio-900 border border-slate-800/90 rounded-2xl p-3.5 flex flex-col justify-between shadow-lg">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i class="ph-fill ph-record text-rose-500" id="rec-icon"></i> Studio Recorder
+                    </span>
+                    <span id="rec-timer" class="text-[11px] font-mono text-slate-400 bg-studio-950 px-2 py-0.5 rounded border border-slate-800">00:00 (0 notes)</span>
+                </div>
+
+                <div class="grid grid-cols-3 gap-1.5 mb-2.5">
+                    <button id="record-btn" class="px-2.5 py-2 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 text-xs font-bold flex items-center justify-center gap-1 transition">
+                        <i class="ph-fill ph-circle"></i> <span id="record-btn-text">Rec</span>
+                    </button>
+                    <button id="play-rec-btn" disabled class="px-2.5 py-2 rounded-lg bg-studio-800 hover:bg-studio-700 disabled:opacity-40 disabled:pointer-events-none text-emerald-300 border border-slate-700 text-xs font-bold flex items-center justify-center gap-1 transition">
+                        <i class="ph-fill ph-play"></i> Play
+                    </button>
+                    <button id="clear-rec-btn" disabled class="px-2.5 py-2 rounded-lg bg-studio-800 hover:bg-studio-700 disabled:opacity-40 disabled:pointer-events-none text-slate-300 border border-slate-700 text-xs font-bold flex items-center justify-center gap-1 transition">
+                        <i class="ph ph-trash"></i> Clear
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between text-[11px] text-slate-400 bg-studio-950/90 px-2.5 py-1.5 rounded-lg border border-slate-800/80">
+                    <span id="rec-status-msg" class="truncate">Hit Rec & play any keys!</span>
+                    <button id="load-sample-rec-btn" class="text-indigo-400 hover:text-indigo-300 font-semibold underline ml-2 shrink-0">Load Demo</button>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Center Stage: Falling/Rising Note Visualizer & Interactive Practice Prompt -->
+        <section class="relative flex-1 min-h-[160px] sm:min-h-[210px] bg-studio-900/95 border border-slate-800 rounded-t-2xl overflow-hidden flex flex-col justify-between shadow-inner">
+            
+            <!-- Practice Banner Overlay (Appears when learning a song) -->
+            <div id="practice-banner" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-studio-950/95 border border-amber-500/50 px-5 py-2.5 rounded-2xl shadow-2xl flex items-center gap-4 backdrop-blur-md">
+                <div>
+                    <span class="text-[10px] uppercase tracking-wider text-amber-400 font-bold block">Interactive Lesson</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-slate-300">Play highlighted key:</span>
+                        <span id="practice-next-note" class="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-mono font-extrabold text-sm">E4 (Key: J)</span>
+                    </div>
+                </div>
+                <div class="h-7 w-[1px] bg-slate-800"></div>
+                <div class="text-xs font-mono text-slate-400">
+                    Step <span id="practice-step-count" class="text-white font-bold">1/15</span>
+                </div>
+                <button id="stop-practice-btn" class="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white transition" title="Exit Practice">
+                    <i class="ph-bold ph-x"></i>
+                </button>
+            </div>
+
+            <!-- Canvas for Real-time Note Bars & Particles -->
+            <canvas id="visualizer-canvas" class="w-full h-full block"></canvas>
+
+            <!-- Subtle Bottom Legend inside Canvas -->
+            <div class="absolute bottom-2 left-4 right-4 flex items-center justify-between pointer-events-none text-[11px] text-slate-400/80">
+                <span><i class="ph-fill ph-sparkle text-indigo-400"></i> Tip: Use your computer keyboard (Z-M and Q-U) or touch/drag across keys!</span>
+                <span id="polyphony-indicator" class="hidden sm:inline font-mono">24-Key Studio Range (C3 - B4)</span>
+            </div>
+        </section>
+
+        <!-- Piano Keyboard Section (2 Full Octaves: C3 to B4) -->
+        <section class="w-full select-none -mt-3">
+            <div id="piano-keyboard" class="piano-container flex w-full relative overflow-hidden">
+                <div class="red-felt"></div>
+                <!-- Keys are dynamically generated by JS for exact alignment with the visualizer -->
+            </div>
+        </section>
+
+    </main>
+
+    <!-- How to Play & Keyboard Guide Modal -->
+    <div id="help-modal" class="fixed inset-0 z-50 hidden bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-studio-900 border border-slate-700 max-w-2xl w-full rounded-2xl shadow-2xl overflow-hidden animate-fade-in">
+            <div class="px-6 py-4 bg-studio-950 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <i class="ph-fill ph-graduation-cap text-2xl text-indigo-400"></i>
+                    <h2 class="text-lg font-bold text-white">How to Play the Musical Keyboard</h2>
+                </div>
+                <button id="close-help-btn" class="w-8 h-8 rounded-lg bg-studio-800 hover:bg-studio-700 flex items-center justify-center text-slate-400 hover:text-white transition">
+                    <i class="ph-bold ph-x"></i>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-5 max-h-[80vh] overflow-y-auto text-sm text-slate-300">
+                <!-- Step 1: Understanding the Piano Layout -->
+                <div class="bg-studio-950/80 border border-slate-800 p-4 rounded-xl">
+                    <h3 class="font-bold text-white text-base mb-1 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">1</span>
+                        Finding "Middle C" & Understanding Notes
+                    </h3>
+                    <p class="text-xs text-slate-400 leading-relaxed">
+                        A piano is organized into repeating patterns of <strong>7 White Keys (C, D, E, F, G, A, B)</strong> and <strong>5 Black Keys</strong> (grouped in sets of 2 and 3). Look for any group of <strong>2 black keys</strong>—the white key immediately to the left is always <strong>C</strong>!
+                    </p>
+                </div>
+
+                <!-- Step 2: Using your Computer Keyboard -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="bg-studio-950/80 border border-slate-800 p-4 rounded-xl">
+                        <h4 class="font-bold text-indigo-400 text-xs uppercase tracking-wider mb-1.5">Lower Octave (C3 - B3)</h4>
+                        <p class="text-xs text-slate-400 mb-2">Use the bottom rows of your computer keyboard for warm bass & chords:</p>
+                        <div class="font-mono text-xs bg-studio-900 p-2 rounded border border-slate-800 text-slate-200">
+                            <div><strong>White Keys:</strong> Z, X, C, V, B, N, M</div>
+                            <div class="text-indigo-300 mt-1"><strong>Black Keys:</strong> S, D, G, H, J</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-studio-950/80 border border-slate-800 p-4 rounded-xl">
+                        <h4 class="font-bold text-emerald-400 text-xs uppercase tracking-wider mb-1.5">Upper Octave (C4 - B4)</h4>
+                        <p class="text-xs text-slate-400 mb-2">Use the top letter row of your keyboard to play lead melodies:</p>
+                        <div class="font-mono text-xs bg-studio-900 p-2 rounded border border-slate-800 text-slate-200">
+                            <div><strong>White Keys:</strong> Q, W, E, R, T, Y, U</div>
+                            <div class="text-emerald-300 mt-1"><strong>Black Keys:</strong> 2, 3, 5, 6, 7</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Playing Your First Song Right Now -->
+                <div class="bg-indigo-950/30 border border-indigo-500/30 p-4 rounded-xl">
+                    <h3 class="font-bold text-indigo-300 text-sm mb-1 flex items-center gap-2">
+                        <i class="ph-fill ph-star text-amber-400"></i> Try Playing "Ode to Joy" Right Now!
+                    </h3>
+                    <p class="text-xs text-slate-300 mb-2">
+                        Type these letters on your computer keyboard at a steady pace:
+                    </p>
+                    <div class="font-mono text-sm font-bold tracking-widest bg-studio-950 p-3 rounded-lg border border-indigo-500/40 text-center text-amber-300">
+                        E - E - R - T &nbsp;|&nbsp; T - R - E - W &nbsp;|&nbsp; Q - Q - W - E &nbsp;|&nbsp; E - W - W
+                    </div>
+                </div>
+
+                <!-- Step 4: Creating Music -->
+                <div class="text-xs text-slate-400 flex items-center justify-between pt-1">
+                    <span>💡 <strong>Pro Tip:</strong> Turn on a <strong>Lo-Fi</strong> or <strong>Pop</strong> beat, hit <strong>Rec</strong>, and jam freely!</span>
+                    <button id="start-jamming-btn" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition">
+                        Let's Play Music!
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /********************************************************************
+         * 1. MUSICAL KEYBOARD DEFINITION (2 Full Octaves: C3 to B4)
+         ********************************************************************/
+        const PIANO_KEYS = [
+            // Octave 3 (Lower / Warm Chords)
+            { note: 'C3',  type: 'white', keybind: 'z', label: 'Z' },
+            { note: 'C#3', type: 'black', keybind: 's', label: 'S' },
+            { note: 'D3',  type: 'white', keybind: 'x', label: 'X' },
+            { note: 'D#3', type: 'black', keybind: 'd', label: 'D' },
+            { note: 'E3',  type: 'white', keybind: 'c', label: 'C' },
+            { note: 'F3',  type: 'white', keybind: 'v', label: 'V' },
+            { note: 'F#3', type: 'black', keybind: 'g', label: 'G' },
+            { note: 'G3',  type: 'white', keybind: 'b', label: 'B' },
+            { note: 'G#3', type: 'black', keybind: 'h', label: 'H' },
+            { note: 'A3',  type: 'white', keybind: 'n', label: 'N' },
+            { note: 'A#3', type: 'black', keybind: 'j', label: 'J' },
+            { note: 'B3',  type: 'white', keybind: 'm', label: 'M' },
+
+            // Octave 4 (Middle C to B4 - Lead Melody)
+            { note: 'C4',  type: 'white', keybind: 'q', label: 'Q' },
+            { note: 'C#4', type: 'black', keybind: '2', label: '2' },
+            { note: 'D4',  type: 'white', keybind: 'w', label: 'W' },
+            { note: 'D#4', type: 'black', keybind: '3', label: '3' },
+            { note: 'E4',  type: 'white', keybind: 'e', label: 'E' },
+            { note: 'F4',  type: 'white', keybind: 'r', label: 'R' },
+            { note: 'F#4', type: 'black', keybind: '5', label: '5' },
+            { note: 'G4',  type: 'white', keybind: 't', label: 'T' },
+            { note: 'G#4', type: 'black', keybind: '6', label: '6' },
+            { note: 'A4',  type: 'white', keybind: 'y', label: 'Y' },
+            { note: 'A#4', type: 'black', keybind: '7', label: '7' },
+            { note: 'B4',  type: 'white', keybind: 'u', label: 'U' },
+        ];
+
+        // Built-in Songs for "Practice Guide" & "Auto Demo"
+        const SONGS = {
+            ode: {
+                title: "Ode to Joy",
+                notes: [
+                    { note: 'E4', dur: 400 }, { note: 'E4', dur: 400 }, { note: 'F4', dur: 400 }, { note: 'G4', dur: 400 },
+                    { note: 'G4', dur: 400 }, { note: 'F4', dur: 400 }, { note: 'E4', dur: 400 }, { note: 'D4', dur: 400 },
+                    { note: 'C4', dur: 400 }, { note: 'C4', dur: 400 }, { note: 'D4', dur: 400 }, { note: 'E4', dur: 400 },
+                    { note: 'E4', dur: 600 }, { note: 'D4', dur: 250 }, { note: 'D4', dur: 700 }
+                ]
+            },
+            twinkle: {
+                title: "Twinkle Twinkle",
+                notes: [
+                    { note: 'C4', dur: 400 }, { note: 'C4', dur: 400 }, { note: 'G4', dur: 400 }, { note: 'G4', dur: 400 },
+                    { note: 'A4', dur: 400 }, { note: 'A4', dur: 400 }, { note: 'G4', dur: 750 },
+                    { note: 'F4', dur: 400 }, { note: 'F4', dur: 400 }, { note: 'E4', dur: 400 }, { note: 'E4', dur: 400 },
+                    { note: 'D4', dur: 400 }, { note: 'D4', dur: 400 }, { note: 'C4', dur: 750 }
+                ]
+            },
+            fur_elise: {
+                title: "Für Elise",
+                notes: [
+                    { note: 'E4', dur: 300 }, { note: 'D#4', dur: 300 }, { note: 'E4', dur: 300 }, { note: 'D#4', dur: 300 },
+                    { note: 'E4', dur: 300 }, { note: 'B3', dur: 300 }, { note: 'D4', dur: 300 }, { note: 'C4', dur: 300 },
+                    { note: 'A3', dur: 650 }, { note: 'C3', dur: 300 }, { note: 'E3', dur: 300 }, { note: 'A3', dur: 300 },
+                    { note: 'B3', dur: 650 }
+                ]
+            },
+            gravity: {
+                title: "Interstellar Theme",
+                notes: [
+                    { note: 'A3', dur: 450 }, { note: 'E4', dur: 450 }, { note: 'A3', dur: 450 }, { note: 'E4', dur: 450 },
+                    { note: 'B3', dur: 450 }, { note: 'E4', dur: 450 }, { note: 'B3', dur: 450 }, { note: 'E4', dur: 450 },
+                    { note: 'C4', dur: 450 }, { note: 'E4', dur: 450 }, { note: 'C4', dur: 450 }, { note: 'E4', dur: 450 },
+                    { note: 'D4', dur: 450 }, { note: 'E4', dur: 450 }, { note: 'B3', dur: 700 }
+                ]
+            },
+            happy: {
+                title: "Happy Birthday",
+                notes: [
+                    { note: 'C4', dur: 300 }, { note: 'C4', dur: 250 }, { note: 'D4', dur: 500 }, { note: 'C4', dur: 500 },
+                    { note: 'F4', dur: 500 }, { note: 'E4', dur: 800 },
+                    { note: 'C4', dur: 300 }, { note: 'C4', dur: 250 }, { note: 'D4', dur: 500 }, { note: 'C4', dur: 500 },
+                    { note: 'G4', dur: 500 }, { note: 'F4', dur: 800 }
+                ]
+            }
+        };
+
+        /********************************************************************
+         * 2. AUDIO ENGINE (TONE.JS PIANO & DRUM SYNTHESIS)
+         ********************************************************************/
+        let audioInitialized = false;
+        let pianoSynth = null;
+        let reverbNode = null;
+        let stereoWidener = null;
+        let currentSustain = 1.4;
+        let currentPreset = 'grand';
+
+        // Drum Synths
+        let kickSynth = null;
+        let snareSynth = null;
+        let hihatSynth = null;
+        let drumLoop = null;
+        let currentBeat = 'none';
+
+        async function initAudio() {
+            if (audioInitialized) return;
+            await Tone.start();
+
+            // Master Reverb & EQ chain for realistic acoustic space
+            reverbNode = new Tone.Reverb({ decay: 2.8, preDelay: 0.02, wet: 0.35 }).toDestination();
+            await reverbNode.generate();
+
+            // Multi-voice polyphonic synth modeled for rich acoustic piano harmonics
+            pianoSynth = new Tone.PolySynth(Tone.Synth, {
+                maxPolyphony: 16,
+                oscillator: {
+                    type: 'fatsawtooth',
+                    count: 3,
+                    spread: 18
+                },
+                envelope: {
+                    attack: 0.006,
+                    decay: 1.4,
+                    sustain: 0.08,
+                    release: 1.4
+                }
+            });
+
+            // Warm low-pass filter so the piano sounds wooden and natural rather than harsh
+            const pianoFilter = new Tone.Filter({
+                frequency: 2300,
+                type: 'lowpass',
+                rolloff: -12
+            });
+
+            pianoSynth.chain(pianoFilter, reverbNode);
+            pianoSynth.volume.value = -6;
+
+            // Initialize Drum Machine Synths
+            kickSynth = new Tone.MembraneSynth({
+                pitchDecay: 0.05,
+                octaves: 5,
+                oscillator: { type: 'sine' },
+                envelope: { attack: 0.001, decay: 0.3, sustain: 0.01, release: 0.4 }
+            }).toDestination();
+            kickSynth.volume.value = -6;
+
+            snareSynth = new Tone.NoiseSynth({
+                noise: { type: 'pink' },
+                envelope: { attack: 0.001, decay: 0.16, sustain: 0 }
+            }).toDestination();
+            snareSynth.volume.value = -12;
+
+            hihatSynth = new Tone.MetalSynth({
+                frequency: 250,
+                envelope: { attack: 0.001, decay: 0.05, release: 0.01 },
+                harmonicity: 5.1,
+                modulationIndex: 32,
+                resonance: 4000,
+                octaves: 1.5
+            }).toDestination();
+            hihatSynth.volume.value = -22;
+
+            Tone.Transport.bpm.value = 110;
+            audioInitialized = true;
+        }
+
+        function applyPianoPreset(presetName) {
+            currentPreset = presetName;
+            if (!pianoSynth) return;
+
+            const badge = document.getElementById('tone-badge');
+            if (presetName === 'grand') {
+                pianoSynth.set({
+                    oscillator: { type: 'fatsawtooth', count: 3, spread: 18 },
+                    envelope: { attack: 0.005, decay: currentSustain, sustain: 0.08, release: currentSustain }
+                });
+                badge.textContent = 'Concert Grand';
+            } else if (presetName === 'warm') {
+                pianoSynth.set({
+                    oscillator: { type: 'fattriangle', count: 3, spread: 12 },
+                    envelope: { attack: 0.015, decay: currentSustain * 1.2, sustain: 0.1, release: currentSustain * 1.2 }
+                });
+                badge.textContent = 'Warm Felt';
+            } else if (presetName === 'epiano') {
+                pianoSynth.set({
+                    oscillator: { type: 'fmsine', modulationType: 'sine', modulationIndex: 2.5, harmonicity: 3 },
+                    envelope: { attack: 0.008, decay: currentSustain, sustain: 0.2, release: currentSustain }
+                });
+                badge.textContent = 'Electric Rhodes';
+            } else if (presetName === 'synth') {
+                pianoSynth.set({
+                    oscillator: { type: 'fatsquare', count: 2, spread: 25 },
+                    envelope: { attack: 0.003, decay: 0.6, sustain: 0.05, release: 0.8 }
+                });
+                badge.textContent = 'Crystal Pluck';
+            }
+        }
+
+        /********************************************************************
+         * 3. RENDER PIANO DOM & HANDLE INPUTS
+         ********************************************************************/
+        const keyboardEl = document.getElementById('piano-keyboard');
+        const keyElements = {};
+        const activeNotes = new Set();
+        let showKeyLabels = true;
+        let isMouseDown = false;
+
+        function buildPianoDOM() {
+            keyboardEl.innerHTML = '<div class="red-felt"></div>';
+            
+            // Count total white keys for positioning black keys accurately
+            const whiteKeys = PIANO_KEYS.filter(k => k.type === 'white');
+            let whiteIndex = 0;
+
+            PIANO_KEYS.forEach((keyObj) => {
+                const el = document.createElement('div');
+                el.dataset.note = keyObj.note;
+
+                if (keyObj.type === 'white') {
+                    el.className = 'white-key group';
+                    el.innerHTML = `
+                        <span class="note-label text-[11px] font-bold text-slate-500 mb-0.5">${keyObj.note}</span>
+                        <span class="keybind-label px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700 font-mono text-[10px] font-extrabold border border-slate-300 shadow-sm">${keyObj.label}</span>
+                    `;
+                    keyObj.whiteIndex = whiteIndex;
+                    whiteIndex++;
+                } else {
+                    el.className = 'black-key';
+                    // Position black key between the previous white key and next white key
+                    const leftPercent = (whiteIndex / whiteKeys.length) * 100;
+                    el.style.left = `${leftPercent}%`;
+                    el.innerHTML = `
+                        <span class="note-label text-[9px] font-semibold text-slate-400 mb-0.5 hidden sm:block">${keyObj.note}</span>
+                        <span class="keybind-label px-1 py-0.2 rounded bg-slate-800 text-indigo-300 font-mono text-[9px] font-bold border border-slate-700">${keyObj.label}</span>
+                    `;
+                }
+
+                // Mouse & Touch Events for expressive glissando and polyphony
+                el.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    isMouseDown = true;
+                    triggerNoteOn(keyObj.note);
+                });
+
+                el.addEventListener('mouseenter', () => {
+                    if (isMouseDown) {
+                        triggerNoteOn(keyObj.note);
+                    }
+                });
+
+                el.addEventListener('mouseup', () => {
+                    triggerNoteOff(keyObj.note);
+                });
+
+                el.addEventListener('mouseleave', () => {
+                    if (isMouseDown) {
+                        triggerNoteOff(keyObj.note);
+                    }
+                });
+
+                el.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    triggerNoteOn(keyObj.note);
+                }, { passive: false });
+
+                el.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    triggerNoteOff(keyObj.note);
+                }, { passive: false });
+
+                keyboardEl.appendChild(el);
+                keyElements[keyObj.note] = el;
+            });
+
+            window.addEventListener('mouseup', () => {
+                isMouseDown = false;
+                activeNotes.forEach(n => triggerNoteOff(n));
+            });
+        }
+
+        /********************************************************************
+         * 4. NOTE PLAYBACK, CHORD DETECTION & PRACTICE CHECK
+         ********************************************************************/
+        function triggerNoteOn(note, isAutomated = false) {
+            if (activeNotes.has(note) && !isAutomated) return;
+            activeNotes.add(note);
+
+            initAudio().then(() => {
+                pianoSynth.triggerAttack(note);
+            });
+
+            // Visual key press state
+            const el = keyElements[note];
+            if (el) {
+                el.classList.add('active');
+            }
+
+            // Spawn visual note bar on canvas
+            spawnVisualBar(note, isAutomated);
+
+            // Update header status
+            updateMusicReadout(note);
+
+            // Record if recorder is active
+            if (isRecording && !isAutomated) {
+                recordedEvents.push({
+                    note,
+                    time: Date.now() - recordStartTime,
+                    dur: 420
+                });
+                updateRecorderUI();
+            }
+
+            // Check Interactive Practice Guide
+            if (practiceState.active && !isAutomated) {
+                checkPracticeStep(note);
+            }
+        }
+
+        function triggerNoteOff(note) {
+            if (!activeNotes.has(note)) return;
+            activeNotes.delete(note);
+
+            if (audioInitialized && pianoSynth) {
+                pianoSynth.triggerRelease(note);
+            }
+
+            const el = keyElements[note];
+            if (el) {
+                el.classList.remove('active');
+            }
+
+            closeVisualBar(note);
+        }
+
+        // Play a full chord with one click
+        window.playInstantChord = async function(notesArray, chordLabel) {
+            await initAudio();
+            notesArray.forEach(note => {
+                triggerNoteOn(note, true);
+                setTimeout(() => triggerNoteOff(note), 650);
+            });
+            document.getElementById('current-chord-display').textContent = chordLabel;
+        };
+
+        function updateMusicReadout(latestNote) {
+            document.getElementById('current-note-display').textContent = latestNote;
+            const pressed = Array.from(activeNotes);
+            const chordEl = document.getElementById('current-chord-display');
+
+            if (pressed.length >= 3) {
+                chordEl.textContent = pressed.join(' + ');
+            } else if (pressed.length === 2) {
+                chordEl.textContent = `Harmonic (${pressed.join('-')})`;
+            } else {
+                const keyInfo = PIANO_KEYS.find(k => k.note === latestNote);
+                chordEl.textContent = keyInfo ? `Key [${keyInfo.label}]` : 'Single Note';
+            }
+        }
+
+        // Computer Keyboard Binding
+        const keyMap = {};
+        PIANO_KEYS.forEach(k => { keyMap[k.keybind.toLowerCase()] = k.note; });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            const note = keyMap[e.key.toLowerCase()];
+            if (note) {
+                e.preventDefault();
+                triggerNoteOn(note);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const note = keyMap[e.key.toLowerCase()];
+            if (note) {
+                triggerNoteOff(note);
+            }
+        });
+
+        /********************************************************************
+         * 5. INTERACTIVE PRACTICE MODE & AUTO DEMO
+         ********************************************************************/
+        let practiceState = {
+            active: false,
+            songKey: 'ode',
+            stepIndex: 0
+        };
+        let autoDemoTimeouts = [];
+
+        function clearAllSongModes() {
+            practiceState.active = false;
+            document.getElementById('practice-banner').classList.add('hidden');
+            autoDemoTimeouts.forEach(t => clearTimeout(t));
+            autoDemoTimeouts = [];
+            Object.values(keyElements).forEach(el => el.classList.remove('target-hint'));
+            document.getElementById('song-status').textContent = 'Select Melody';
+        }
+
+        function startPracticeMode() {
+            clearAllSongModes();
+            const songKey = document.getElementById('song-select').value;
+            practiceState.active = true;
+            practiceState.songKey = songKey;
+            practiceState.stepIndex = 0;
+
+            document.getElementById('practice-banner').classList.remove('hidden');
+            document.getElementById('song-status').textContent = 'Practice Mode';
+            highlightCurrentPracticeNote();
+        }
+
+        function highlightCurrentPracticeNote() {
+            Object.values(keyElements).forEach(el => el.classList.remove('target-hint'));
+            const song = SONGS[practiceState.songKey];
+            if (!song) return;
+
+            if (practiceState.stepIndex >= song.notes.length) {
+                // Completed the song!
+                document.getElementById('practice-next-note').textContent = "🎉 Bravo! Song Complete!";
+                document.getElementById('song-status').textContent = 'Completed!';
+                setTimeout(() => {
+                    if (practiceState.active) {
+                        practiceState.stepIndex = 0;
+                        highlightCurrentPracticeNote();
+                    }
+                }, 1800);
+                return;
+            }
+
+            const targetNote = song.notes[practiceState.stepIndex].note;
+            const keyInfo = PIANO_KEYS.find(k => k.note === targetNote);
+            const el = keyElements[targetNote];
+            if (el) {
+                el.classList.add('target-hint');
+            }
+
+            document.getElementById('practice-next-note').textContent = `${targetNote} (Press ${keyInfo ? keyInfo.label : ''})`;
+            document.getElementById('practice-step-count').textContent = `${practiceState.stepIndex + 1}/${song.notes.length}`;
+        }
+
+        function checkPracticeStep(playedNote) {
+            const song = SONGS[practiceState.songKey];
+            if (!song || practiceState.stepIndex >= song.notes.length) return;
+
+            const expectedNote = song.notes[practiceState.stepIndex].note;
+            if (playedNote === expectedNote) {
+                practiceState.stepIndex++;
+                highlightCurrentPracticeNote();
+            }
+        }
+
+        async function startAutoDemo() {
+            clearAllSongModes();
+            await initAudio();
+            const songKey = document.getElementById('song-select').value;
+            const song = SONGS[songKey];
+            if (!song) return;
+
+            document.getElementById('song-status').textContent = `Playing: ${song.title}`;
+            let cumulativeTime = 0;
+
+            song.notes.forEach((item, idx) => {
+                const tOn = setTimeout(() => {
+                    triggerNoteOn(item.note, true);
+                }, cumulativeTime);
+
+                const tOff = setTimeout(() => {
+                    triggerNoteOff(item.note);
+                    if (idx === song.notes.length - 1) {
+                        document.getElementById('song-status').textContent = 'Demo Finished';
+                    }
+                }, cumulativeTime + item.dur * 0.85);
+
+                autoDemoTimeouts.push(tOn, tOff);
+                cumulativeTime += item.dur;
+            });
+        }
+
+        /********************************************************************
+         * 6. BACKING DRUM MACHINE
+         ********************************************************************/
+        async function setBackingBeat(beatType) {
+            await initAudio();
+            currentBeat = beatType;
+
+            if (drumLoop) {
+                drumLoop.dispose();
+                drumLoop = null;
+            }
+
+            if (beatType === 'none') {
+                Tone.Transport.stop();
+                return;
+            }
+
+            let step = 0;
+            drumLoop = new Tone.Loop((time) => {
+                if (beatType === 'lofi') {
+                    const s = step % 8;
+                    if (s === 0 || s === 5) kickSynth.triggerAttackRelease('C1', '8n', time);
+                    if (s === 2 || s === 6) snareSynth.triggerAttackRelease('16n', time);
+                    if (s % 2 === 0) hihatSynth.triggerAttackRelease('32n', time);
+                } else if (beatType === 'pop') {
+                    const s = step % 8;
+                    if (s === 0 || s === 4) kickSynth.triggerAttackRelease('C1', '8n', time);
+                    if (s === 2 || s === 6) snareSynth.triggerAttackRelease('16n', time);
+                    hihatSynth.triggerAttackRelease('32n', time);
+                } else if (beatType === 'waltz') {
+                    const s = step % 6;
+                    if (s === 0) kickSynth.triggerAttackRelease('C1', '8n', time);
+                    if (s === 2 || s === 4) hihatSynth.triggerAttackRelease('16n', time);
+                }
+                step++;
+            }, '8n').start(0);
+
+            Tone.Transport.start();
+        }
+
+        /********************************************************************
+         * 7. STUDIO RECORDER & PLAYBACK
+         ********************************************************************/
+        let isRecording = false;
+        let recordStartTime = 0;
+        let recordedEvents = [];
+        let recordTimerInterval = null;
+        let playbackTimeouts = [];
+
+        function toggleRecording() {
+            const recBtn = document.getElementById('record-btn');
+            const recText = document.getElementById('record-btn-text');
+            const recIcon = document.getElementById('rec-icon');
+            const statusMsg = document.getElementById('rec-status-msg');
+
+            if (!isRecording) {
+                // Start Recording
+                isRecording = true;
+                recordedEvents = [];
+                recordStartTime = Date.now();
+                recText.textContent = 'Stop';
+                recIcon.classList.add('rec-pulse');
+                recBtn.classList.replace('bg-rose-600/20', 'bg-rose-600');
+                recBtn.classList.replace('text-rose-300', 'text-white');
+                statusMsg.textContent = 'Recording live notes...';
+
+                recordTimerInterval = setInterval(updateRecorderUI, 250);
+            } else {
+                // Stop Recording
+                isRecording = false;
+                clearInterval(recordTimerInterval);
+                recText.textContent = 'Rec';
+                recIcon.classList.remove('rec-pulse');
+                recBtn.classList.replace('bg-rose-600', 'bg-rose-600/20');
+                recBtn.classList.replace('text-white', 'text-rose-300');
+                
+                const hasNotes = recordedEvents.length > 0;
+                document.getElementById('play-rec-btn').disabled = !hasNotes;
+                document.getElementById('clear-rec-btn').disabled = !hasNotes;
+                statusMsg.textContent = hasNotes ? `Saved ${recordedEvents.length} notes!` : 'No notes recorded.';
+            }
+        }
+
+        function updateRecorderUI() {
+            const elapsedSec = isRecording ? Math.floor((Date.now() - recordStartTime) / 1000) : 0;
+            const mins = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+            const secs = String(elapsedSec % 60).padStart(2, '0');
+            document.getElementById('rec-timer').textContent = `${mins}:${secs} (${recordedEvents.length} notes)`;
+        }
+
+        async function playRecordedSong() {
+            if (recordedEvents.length === 0) return;
+            await initAudio();
+            playbackTimeouts.forEach(t => clearTimeout(t));
+            playbackTimeouts = [];
+
+            const statusMsg = document.getElementById('rec-status-msg');
+            statusMsg.textContent = 'Playing your recording...';
+
+            recordedEvents.forEach((ev, i) => {
+                const tOn = setTimeout(() => {
+                    triggerNoteOn(ev.note, true);
+                }, ev.time);
+
+                const tOff = setTimeout(() => {
+                    triggerNoteOff(ev.note);
+                    if (i === recordedEvents.length - 1) {
+                        statusMsg.textContent = 'Playback complete!';
+                    }
+                }, ev.time + ev.dur);
+
+                playbackTimeouts.push(tOn, tOff);
+            });
+        }
+
+        function loadSampleRecording() {
+            recordedEvents = [
+                { note: 'C3', time: 0, dur: 800 },
+                { note: 'E4', time: 0, dur: 350 },
+                { note: 'G4', time: 350, dur: 350 },
+                { note: 'B4', time: 700, dur: 450 },
+                { note: 'A3', time: 1150, dur: 800 },
+                { note: 'C4', time: 1150, dur: 350 },
+                { note: 'E4', time: 1500, dur: 350 },
+                { note: 'A4', time: 1850, dur: 450 },
+                { note: 'F3', time: 2300, dur: 800 },
+                { note: 'A4', time: 2300, dur: 350 },
+                { note: 'C4', time: 2650, dur: 350 },
+                { note: 'G3', time: 3050, dur: 900 },
+                { note: 'B3', time: 3050, dur: 900 },
+                { note: 'D4', time: 3050, dur: 900 },
+                { note: 'G4', time: 3050, dur: 900 }
+            ];
+            document.getElementById('play-rec-btn').disabled = false;
+            document.getElementById('clear-rec-btn').disabled = false;
+            document.getElementById('rec-timer').textContent = `00:04 (${recordedEvents.length} notes)`;
+            document.getElementById('rec-status-msg').textContent = 'Demo loaded! Click Play.';
+            playRecordedSong();
+        }
+
+        /********************************************************************
+         * 8. REAL-TIME CANVAS VISUALIZER (RISING NOTE BARS & PARTICLES)
+         ********************************************************************/
+        const canvas = document.getElementById('visualizer-canvas');
+        const ctx = canvas.getContext('2d');
+        let visualBars = [];
+        let particles = [];
+
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+        }
+
+        function spawnVisualBar(note, isAutomated) {
+            const el = keyElements[note];
+            if (!el) return;
+
+            const keyRect = el.getBoundingClientRect();
+            const canvasRect = canvas.getBoundingClientRect();
+            const x = keyRect.left - canvasRect.left;
+            const width = keyRect.width;
+
+            const color = isAutomated
+                ? '#34d399' // Emerald for demo/chord notes
+                : (note.includes('#') ? '#a855f7' : '#6366f1'); // Purple for sharps, Indigo for white keys
+
+            visualBars.push({
+                note,
+                x: x + 2,
+                width: Math.max(width - 4, 8),
+                y: canvas.height,
+                height: 10,
+                active: true,
+                color
+            });
+
+            // Spawn musical particles at the bottom of the canvas
+            for (let i = 0; i < 6; i++) {
+                particles.push({
+                    x: x + width / 2,
+                    y: canvas.height - 4,
+                    vx: (Math.random() - 0.5) * 3.5,
+                    vy: -(Math.random() * 3 + 1.5),
+                    radius: Math.random() * 3 + 1.5,
+                    alpha: 1,
+                    color
+                });
+            }
+        }
+
+        function closeVisualBar(note) {
+            for (let i = visualBars.length - 1; i >= 0; i--) {
+                if (visualBars[i].note === note && visualBars[i].active) {
+                    visualBars[i].active = false;
+                    break;
+                }
+            }
+        }
+
+        function animateVisualizer() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Subtle background studio grid lines
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.06)';
+            ctx.lineWidth = 1;
+            const stepX = canvas.width / 14;
+            for (let i = 1; i < 14; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * stepX, 0);
+                ctx.lineTo(i * stepX, canvas.height);
+                ctx.stroke();
+            }
+
+            // Update and draw rising note bars
+            const speed = 3.2;
+            for (let i = visualBars.length - 1; i >= 0; i--) {
+                const bar = visualBars[i];
+                if (bar.active) {
+                    bar.y -= speed;
+                    bar.height += speed;
+                } else {
+                    bar.y -= speed;
+                }
+
+                // Draw glowing rounded rectangle
+                ctx.save();
+                ctx.fillStyle = bar.color;
+                ctx.shadowColor = bar.color;
+                ctx.shadowBlur = 14;
+                ctx.beginPath();
+                ctx.roundRect(bar.x, bar.y, bar.width, bar.height, 6);
+                ctx.fill();
+                ctx.restore();
+
+                // Remove bars that floated off screen
+                if (bar.y + bar.height < 0) {
+                    visualBars.splice(i, 1);
+                }
+            }
+
+            // Update and draw sparkles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 0.025;
+
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            requestAnimationFrame(animateVisualizer);
+        }
+
+        /********************************************************************
+         * 9. UI EVENT LISTENERS & INITIALIZATION
+         ********************************************************************/
+        window.onload = function() {
+            buildPianoDOM();
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            animateVisualizer();
+
+            // Tone Preset Buttons
+            document.querySelectorAll('.tone-preset-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    await initAudio();
+                    document.querySelectorAll('.tone-preset-btn').forEach(b => {
+                        b.className = 'tone-preset-btn px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-studio-800 hover:bg-studio-700 text-slate-300 border border-slate-700 flex items-center justify-center gap-1.5 transition';
+                    });
+                    btn.className = 'tone-preset-btn active-preset px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white border border-indigo-400 shadow flex items-center justify-center gap-1.5 transition';
+                    applyPianoPreset(btn.dataset.preset);
+                });
+            });
+
+            // Sustain & Reverb Sliders
+            document.getElementById('sustain-slider').addEventListener('input', (e) => {
+                currentSustain = parseFloat(e.target.value);
+                applyPianoPreset(currentPreset);
+            });
+
+            document.getElementById('reverb-slider').addEventListener('input', (e) => {
+                if (reverbNode) {
+                    reverbNode.wet.value = parseFloat(e.target.value);
+                }
+            });
+
+            // Learn & Song Controls
+            document.getElementById('practice-song-btn').addEventListener('click', startPracticeMode);
+            document.getElementById('autoplay-song-btn').addEventListener('click', startAutoDemo);
+            document.getElementById('stop-practice-btn').addEventListener('click', clearAllSongModes);
+            document.getElementById('song-select').addEventListener('change', () => {
+                if (practiceState.active) startPracticeMode();
+            });
+
+            // Backing Drum Beats
+            document.querySelectorAll('.beat-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.beat-btn').forEach(b => {
+                        b.className = 'beat-btn bg-studio-800 hover:bg-studio-700 text-slate-300 border-slate-700 px-2 py-1.5 rounded-lg text-xs font-semibold border transition';
+                    });
+                    btn.className = 'beat-btn bg-emerald-600 text-white border-emerald-400 px-2 py-1.5 rounded-lg text-xs font-semibold border transition';
+                    setBackingBeat(btn.dataset.beat);
+                });
+            });
+
+            document.getElementById('bpm-slider').addEventListener('input', (e) => {
+                const bpm = parseInt(e.target.value, 10);
+                document.getElementById('bpm-display').textContent = `${bpm} BPM`;
+                if (audioInitialized) {
+                    Tone.Transport.bpm.value = bpm;
+                }
+            });
+
+            // Recorder Controls
+            document.getElementById('record-btn').addEventListener('click', toggleRecording);
+            document.getElementById('play-rec-btn').addEventListener('click', playRecordedSong);
+            document.getElementById('clear-rec-btn').addEventListener('click', () => {
+                recordedEvents = [];
+                document.getElementById('play-rec-btn').disabled = true;
+                document.getElementById('clear-rec-btn').disabled = true;
+                document.getElementById('rec-timer').textContent = '00:00 (0 notes)';
+                document.getElementById('rec-status-msg').textContent = 'Recording cleared.';
+            });
+            document.getElementById('load-sample-rec-btn').addEventListener('click', loadSampleRecording);
+
+            // Toggle Key Labels
+            document.getElementById('toggle-labels-btn').addEventListener('click', (e) => {
+                showKeyLabels = !showKeyLabels;
+                document.querySelectorAll('.note-label, .keybind-label').forEach(el => {
+                    el.style.opacity = showKeyLabels ? '1' : '0';
+                });
+                e.currentTarget.querySelector('span').textContent = `Key Labels: ${showKeyLabels ? 'ON' : 'OFF'}`;
+            });
+
+            // Help Modal
+            const helpModal = document.getElementById('help-modal');
+            document.getElementById('how-to-play-btn').addEventListener('click', () => helpModal.classList.remove('hidden'));
+            document.getElementById('close-help-btn').addEventListener('click', () => helpModal.classList.add('hidden'));
+            document.getElementById('start-jamming-btn').addEventListener('click', () => helpModal.classList.add('hidden'));
+        };
+    </script>
+</body>
+</html>
